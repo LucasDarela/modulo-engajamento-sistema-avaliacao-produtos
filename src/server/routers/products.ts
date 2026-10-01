@@ -5,7 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import { headers } from "next/headers";
 import { z } from "zod";
-
+import type { ProductSort } from "@/lib/product-sort";
 import {
   createProductSchema,
   listProductsSchema,
@@ -16,8 +16,7 @@ import { publicProcedure, router } from "@/server/trpc";
 
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 
-const CARD_COLUMNS =
-  "id, name, description, image_url, score, feedbacks_count, created_at";
+const CARD_COLUMNS = "id, name, description, image_url, score, feedbacks_count";
 
 function toCard(
   row: Pick<
@@ -37,31 +36,52 @@ function toCard(
 
 export type ProductCard = ReturnType<typeof toCard>;
 
-// Formato do timestamptz devolvido pelo PostgREST, ex.: 2026-10-01T12:00:00.123456+00:00
-const ISO_TIMESTAMP =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/;
+// Colunas de ordenação por opção da home. Sem avaliação (nota nula) sempre vai
+// para o fim; o id no final deixa a ordem determinística entre páginas.
+const SORT_ORDER: Record<
+  ProductSort,
+  { column: keyof ProductRow; ascending: boolean }[]
+> = {
+  top_rated: [
+    { column: "score", ascending: false },
+    { column: "feedbacks_count", ascending: false },
+  ],
+  relevance: [
+    { column: "relevance", ascending: false },
+    { column: "feedbacks_count", ascending: false },
+  ],
+  most_reviewed: [
+    { column: "feedbacks_count", ascending: false },
+    { column: "score", ascending: false },
+  ],
+  lowest_rated: [
+    { column: "score", ascending: true },
+    { column: "feedbacks_count", ascending: false },
+  ],
+};
 
-// Cursor opaco: base64url("<created_at>|<id>") da última linha da página
-function encodeCursor(row: Pick<ProductRow, "created_at" | "id">) {
-  return Buffer.from(`${row.created_at}|${row.id}`).toString("base64url");
+// Cursor opaco: base64url("<sort>:<offset>"). Offset porque a ordenação por nota
+// tem nulos e muda conforme chegam avaliações; o client remove duplicados.
+const MAX_OFFSET = 10_000;
+
+function encodeCursor(sort: ProductSort, offset: number) {
+  return Buffer.from(`${sort}:${offset}`).toString("base64url");
 }
 
-function decodeCursor(cursor: string) {
-  const [createdAt, id, ...rest] = Buffer.from(cursor, "base64url")
+function decodeCursor(cursor: string, sort: ProductSort) {
+  const [cursorSort, rawOffset, ...rest] = Buffer.from(cursor, "base64url")
     .toString("utf8")
-    .split("|");
+    .split(":");
+  const offset = Number(rawOffset);
   if (
     rest.length > 0 ||
-    !createdAt ||
-    !id ||
-    // Regex estrita: o Date.parse aceita texto livre entre parênteses, e o
-    // valor é interpolado no filtro do PostgREST logo abaixo
-    !ISO_TIMESTAMP.test(createdAt) ||
-    !/^[\w-]+$/.test(id)
+    cursorSort !== sort ||
+    !/^\d+$/.test(rawOffset ?? "") ||
+    offset > MAX_OFFSET
   ) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Cursor inválido." });
   }
-  return { createdAt, id };
+  return offset;
 }
 
 // Hash antes de comparar: timingSafeEqual exige buffers do mesmo tamanho
@@ -92,22 +112,16 @@ const adminProcedure = publicProcedure.use(async ({ next }) => {
 
 export const productsRouter = router({
   list: publicProcedure.input(listProductsSchema).query(async ({ input }) => {
-    // Keyset em (created_at desc, id desc): estável mesmo com inserts novos
-    let query = db
-      .from("products")
-      .select(CARD_COLUMNS)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(input.limit + 1);
+    const offset = input.cursor ? decodeCursor(input.cursor, input.sort) : 0;
 
-    if (input.cursor) {
-      const { createdAt, id } = decodeCursor(input.cursor);
-      query = query.or(
-        `created_at.lt."${createdAt}",and(created_at.eq."${createdAt}",id.lt."${id}")`,
-      );
+    let query = db.from("products").select(CARD_COLUMNS);
+    for (const { column, ascending } of SORT_ORDER[input.sort]) {
+      query = query.order(column, { ascending, nullsFirst: false });
     }
-
-    const { data, error } = await query;
+    // Busca 1 a mais para saber se existe próxima página (range é inclusivo)
+    const { data, error } = await query
+      .order("id", { ascending: true })
+      .range(offset, offset + input.limit);
     if (error) {
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
@@ -118,11 +132,12 @@ export const productsRouter = router({
 
     const hasMore = data.length > input.limit;
     const rows = hasMore ? data.slice(0, input.limit) : data;
-    const last = rows.at(-1);
 
     return {
       items: rows.map(toCard),
-      nextCursor: hasMore && last ? encodeCursor(last) : null,
+      nextCursor: hasMore
+        ? encodeCursor(input.sort, offset + rows.length)
+        : null,
     };
   }),
 

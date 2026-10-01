@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { z } from "zod";
 
+import type { ProductSort } from "@/lib/product-sort";
 import type { CreateProductInput } from "@/lib/validation/products";
 import { createCaller } from "@/server/routers/_app";
 import { isValidApiKey } from "@/server/routers/products";
@@ -47,7 +48,7 @@ function trpcErrorResponse(error: TRPCError) {
   );
 }
 
-// GET /api/v1/products?cursor=&limit= → { items, nextCursor }
+// GET /api/v1/products?sort=&cursor=&limit= → { items, nextCursor }
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const limit = searchParams.get("limit");
@@ -55,6 +56,8 @@ export async function GET(req: Request) {
   try {
     const page = await createCaller(await createContext()).products.list({
       cursor: searchParams.get("cursor") || undefined,
+      // Valor inválido é rejeitado pelo zod com 400
+      sort: (searchParams.get("sort") || undefined) as ProductSort | undefined,
       // Number("abc") vira NaN e é rejeitado pelo zod
       limit: limit === null ? undefined : Number(limit),
     });

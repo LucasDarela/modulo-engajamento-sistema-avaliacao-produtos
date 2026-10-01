@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { IMAGE_HOSTS } from "@/lib/image-hosts";
+import { DEFAULT_PRODUCT_SORT, PRODUCT_SORT_VALUES } from "@/lib/product-sort";
 
 export const PRODUCTS_PAGE_SIZE = 12;
 export const PRODUCTS_MAX_PAGE_SIZE = 50;
@@ -14,6 +15,11 @@ export const listProductsSchema = z.object({
     .min(1, "O limite mínimo é 1")
     .max(PRODUCTS_MAX_PAGE_SIZE, `O limite máximo é ${PRODUCTS_MAX_PAGE_SIZE}`)
     .default(PRODUCTS_PAGE_SIZE),
+  sort: z
+    .enum(PRODUCT_SORT_VALUES, {
+      error: `Ordenação inválida. Use: ${PRODUCT_SORT_VALUES.join(", ")}`,
+    })
+    .default(DEFAULT_PRODUCT_SORT),
 });
 
 export const createProductSchema = z.object({

@@ -26,9 +26,9 @@ export function ProductCard({ product, eager = false }: ProductCardProps) {
   return (
     <Link
       href={`/products/${id}`}
-      className="group flex flex-col gap-4 rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-offset-4"
+      className="group w-full flex flex-col gap-4 rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-offset-4"
     >
-      <div className="relative aspect-4/3 overflow-hidden rounded-2xl bg-muted">
+      <div className="relative w-full aspect-square overflow-hidden rounded-2xl bg-white border border-zinc-200 dark:border-zinc-800">
         <Image
           src={imageUrl}
           alt=""
@@ -36,7 +36,7 @@ export function ProductCard({ product, eager = false }: ProductCardProps) {
           sizes={IMAGE_SIZES}
           loading={eager ? "eager" : "lazy"}
           fetchPriority={eager ? "high" : "auto"}
-          className="object-cover transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]"
+          className="object-contain mix-blend-multiply transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]"
         />
       </div>
 
@@ -86,8 +86,8 @@ function ProductScore({
 
 export function ProductCardSkeleton() {
   return (
-    <div aria-hidden="true" className="flex flex-col gap-4">
-      <Skeleton className="aspect-4/3 rounded-2xl" />
+    <div aria-hidden="true" className="flex w-full flex-col gap-4">
+      <Skeleton className="w-full aspect-square rounded-2xl" />
       <div className="flex flex-col gap-2 px-0.5">
         <Skeleton className="h-5 w-3/4" />
         <Skeleton className="h-4 w-full" />

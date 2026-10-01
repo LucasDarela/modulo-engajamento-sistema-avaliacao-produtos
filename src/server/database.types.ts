@@ -82,6 +82,7 @@ export type Database = {
           id: string;
           image_url: string;
           name: string;
+          relevance: number | null;
           score: number | null;
           updated_at: string;
         };
@@ -96,6 +97,7 @@ export type Database = {
           id: string;
           image_url: string;
           name: string;
+          relevance?: never;
           score?: number | null;
           updated_at?: string;
         };
@@ -110,6 +112,7 @@ export type Database = {
           id?: string;
           image_url?: string;
           name?: string;
+          relevance?: never;
           score?: number | null;
           updated_at?: string;
         };

@@ -5,6 +5,7 @@ import { CircleAlert, PackageOpen } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
+import type { ProductSort } from "@/lib/product-sort";
 import { PRODUCTS_PAGE_SIZE } from "@/lib/validation/products";
 import type { ProductCard as ProductCardData } from "@/server/routers/products";
 import { useTRPC } from "@/trpc/client";
@@ -20,11 +21,17 @@ const EAGER_IMAGES = 4;
 const GRID_CLASSES =
   "grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
-export function ProductGrid({ initialPage }: { initialPage?: ProductsPage }) {
+export function ProductGrid({
+  sort,
+  initialPage,
+}: {
+  sort: ProductSort;
+  initialPage?: ProductsPage;
+}) {
   const trpc = useTRPC();
   const query = useInfiniteQuery(
     trpc.products.list.infiniteQueryOptions(
-      { limit: PRODUCTS_PAGE_SIZE },
+      { limit: PRODUCTS_PAGE_SIZE, sort },
       {
         getNextPageParam: (page) => page.nextCursor,
         // Primeira página já vem renderizada do servidor
@@ -67,7 +74,12 @@ export function ProductGrid({ initialPage }: { initialPage?: ProductsPage }) {
     return <ErrorState onRetry={() => query.refetch()} />;
   }
 
-  const products = data?.pages.flatMap((page) => page.items) ?? [];
+  // A paginação é por offset: se a nota de um produto mudar entre páginas, ele
+  // pode vir de novo. Mantém só a primeira ocorrência.
+  const seen = new Set<string>();
+  const products = (data?.pages.flatMap((page) => page.items) ?? []).filter(
+    (product) => !seen.has(product.id) && seen.add(product.id),
+  );
   if (products.length === 0) return <EmptyState />;
 
   return (
